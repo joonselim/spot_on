@@ -199,12 +199,12 @@
     if (mode === "area") {
       bestEl.textContent = b === null
         ? level + "단계 최고점수: -"
-        : level + "단계 최고점수: " + b.toFixed(1) + "%";
+        : level + "단계 최고점수: " + fmt(b, 1) + "%";
     } else {
       const t = MODES.time.secs[level];
       bestEl.textContent = b === null
         ? t + "초 최고기록: -"
-        : t + "초 최고기록: " + b.toFixed(2) + "초";
+        : t + "초 최고기록: " + fmt(b, 2) + "초";
     }
   }
 
@@ -281,7 +281,7 @@
         isNewBest = true;
       }
       hint.textContent = (isNewBest ? "🎉 신기록! " : "")
-        + "점수 " + score.toFixed(1) + "% · 다시 하려면 스페이스바";
+        + "점수 " + fmt(score, 1) + "% · 다시 하려면 스페이스바";
     } else {
       score = (performance.now() - startTime) / 1000;
       const t = MODES.time.secs[level];
@@ -293,7 +293,7 @@
         isNewBest = true;
       }
       hint.textContent = (isNewBest ? "🎉 신기록! " : "")
-        + "기록 " + score.toFixed(2) + "초 · 다시 하려면 스페이스바";
+        + "기록 " + fmt(score, 2) + "초 · 다시 하려면 스페이스바";
     }
 
     updateBestDisplay();
@@ -326,6 +326,29 @@
     raf = requestAnimationFrame(loop);
   }
 
+  // 소수점 자리수: 값이 정수면 소수점 없이 표기
+  function fmt(v, decimals) {
+    const n = Number(v.toFixed(decimals));
+    return Number.isInteger(n) ? String(n) : n.toFixed(decimals);
+  }
+
+  function valueText(v) {
+    return mode === "area" ? fmt(v, 1) + "%" : fmt(v, 2) + "초";
+  }
+
+  function drawCenterText(text) {
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "700 54px -apple-system, sans-serif";
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "rgba(74,111,212,0.9)";
+    ctx.strokeText(text, cx, cy);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(text, cx, cy);
+    ctx.restore();
+  }
+
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
@@ -344,20 +367,14 @@
     ctx.strokeStyle = "#000";
     ctx.stroke();
 
-    if (state === "stopped") {
-      const scoreText = mode === "area"
-        ? score.toFixed(1) + "%"
-        : score.toFixed(2) + "초";
-      ctx.save();
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = "700 54px -apple-system, sans-serif";
-      ctx.lineWidth = 6;
-      ctx.strokeStyle = "rgba(74,111,212,0.9)";
-      ctx.strokeText(scoreText, cx, cy);
-      ctx.fillStyle = "#fff";
-      ctx.fillText(scoreText, cx, cy);
-      ctx.restore();
+    if (state === "growing") {
+      // 진행 중 실시간 카운터 (0부터 올라감)
+      const v = mode === "area"
+        ? computeAreaScore()
+        : (performance.now() - startTime) / 1000;
+      drawCenterText(valueText(v));
+    } else if (state === "stopped") {
+      drawCenterText(valueText(score));
     } else if (state === "over") {
       ctx.save();
       ctx.textAlign = "center";
