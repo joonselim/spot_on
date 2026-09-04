@@ -337,11 +337,13 @@
   }
 
   function drawCenterText(text) {
+    // 원(작은 원) 크기에 비례해 글자 크기 조절
+    const fontSize = Math.max(22, Math.min(r * 0.55, 130));
     ctx.save();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "700 54px -apple-system, sans-serif";
-    ctx.lineWidth = 6;
+    ctx.font = "700 " + fontSize + "px -apple-system, sans-serif";
+    ctx.lineWidth = Math.max(3, fontSize * 0.11);
     ctx.strokeStyle = "rgba(74,111,212,0.9)";
     ctx.strokeText(text, cx, cy);
     ctx.fillStyle = "#fff";
