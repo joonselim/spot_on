@@ -357,6 +357,7 @@
   }
 
   function reset() {
+    stopDrumroll();
     state = "ready";
     r = 0;
     score = 0;
@@ -374,6 +375,7 @@
     startTime = performance.now();
     hint.textContent = "지금! 딱 맞을 때 스페이스바를 누르세요";
     showControls(false);
+    startDrumroll();
     loop();
   }
 
@@ -387,6 +389,8 @@
   function stop() {
     state = "stopped";
     if (raf) cancelAnimationFrame(raf);
+    stopDrumroll();
+    playPop();
 
     let isNewBest = false;
     let perfect = false;
@@ -431,6 +435,8 @@
   function gameOver() {
     state = "over";
     if (raf) cancelAnimationFrame(raf);
+    stopDrumroll();
+    playFail();
     r = maxR;
     hint.textContent = (mode === "time" ? "시간 초과! " : "150% 초과! ") + "다시 하려면 스페이스바";
     addHistory(mode, level, null);
@@ -484,7 +490,114 @@
     ctx.restore();
   }
 
-  // 컨페티 (정확히 맞췄을 때 원에서 팡)
+  // ===== 사운드 =====
+  let audioCtx = null;
+  let drumTimer = null;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  }
+
+  // 드럼 한 방 (두/구)
+  function playKick(freq) {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.4, t + 0.12);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.45, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.15);
+  }
+
+  function startDrumroll() {
+    ensureAudio();
+    stopDrumroll();
+    let i = 0;
+    const tick = function () {
+      // "두구" 두 박자 번갈아 (낮은음/높은음)
+      playKick(i % 2 === 0 ? 150 : 190);
+      i++;
+      drumTimer = setTimeout(tick, 110);
+    };
+    tick();
+  }
+
+  function stopDrumroll() {
+    if (drumTimer) {
+      clearTimeout(drumTimer);
+      drumTimer = null;
+    }
+  }
+
+  // 팡! (스페이스바로 멈출 때)
+  function playPop() {
+    ensureAudio();
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const dur = 0.25;
+    const size = Math.floor(audioCtx.sampleRate * dur);
+    const buffer = audioCtx.createBuffer(1, size, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let k = 0; k < size; k++) {
+      const decay = Math.pow(1 - k / size, 2);
+      data[k] = (Math.random() * 2 - 1) * decay;
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    const bp = audioCtx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1400;
+    bp.Q.value = 0.7;
+    const ng = audioCtx.createGain();
+    ng.gain.setValueAtTime(0.6, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    noise.connect(bp).connect(ng).connect(audioCtx.destination);
+    noise.start(t);
+
+    // 밝은 "팡" 톤
+    const osc = audioCtx.createOscillator();
+    const og = audioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(900, t);
+    osc.frequency.exponentialRampToValueAtTime(240, t + 0.18);
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.4, t + 0.005);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    osc.connect(og).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.22);
+  }
+
+  // 실패음 (게임오버)
+  function playFail() {
+    ensureAudio();
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(220, t);
+    osc.frequency.exponentialRampToValueAtTime(70, t + 0.4);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    osc.connect(g).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.46);
+  }
+
+  // ===== 컨페티 (정확히 맞췄을 때 원에서 팡) =====
   let confetti = [];
   let confettiRaf = null;
 
@@ -554,11 +667,11 @@
       ctx.fill();
     }
 
-    // 큰 원 (검정 얇은 테두리)
+    // 큰 원 (테두리 투명)
     ctx.beginPath();
     ctx.arc(cx, cy, targetR, 0, Math.PI * 2);
     ctx.lineWidth = 2;
-    ctx.strokeStyle = "#000";
+    ctx.strokeStyle = "transparent";
     ctx.stroke();
 
     if (state === "growing") {
