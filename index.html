@@ -44,6 +44,13 @@
     border-bottom: 1px solid rgba(255,255,255,0.35);
     padding-bottom: 6px;
   }
+  #histbest {
+    font-size: 12px;
+    font-weight: 700;
+    color: #ffe27a;
+    margin-bottom: 10px;
+    min-height: 15px;
+  }
   #histlist {
     max-height: 380px;
     overflow-y: auto;
@@ -65,6 +72,19 @@
   }
   .hist-item.fail {
     background: rgba(255,91,91,0.25);
+  }
+  .hist-item.perfect {
+    background: rgba(74,255,161,0.32);
+  }
+  /* 가장 최근(맨 위) 기록 강조 */
+  .hist-item:first-child {
+    border: 1px solid rgba(255,255,255,0.85);
+  }
+  #histlist .hist-item:first-child:not(.fail):not(.perfect) {
+    background: rgba(255,255,255,0.34);
+  }
+  .hist-item:first-child .h-key {
+    opacity: 1;
   }
   .hist-item .h-key {
     opacity: 0.85;
@@ -187,6 +207,7 @@
     </div>
     <div id="history">
       <div class="hist-head">기록</div>
+      <div id="histbest"></div>
       <div id="histlist"></div>
     </div>
   </div>
@@ -199,13 +220,14 @@
   const bestEl = document.getElementById("best");
   const controls = document.getElementById("controls");
   const histList = document.getElementById("histlist");
+  const histBestEl = document.getElementById("histbest");
   const tabs = Array.from(document.querySelectorAll("button.tab"));
 
   // 플레이 기록 (최신이 위)
   const history = [];
 
-  function addHistory(entryMode, entryLevel, value) {
-    history.unshift({ mode: entryMode, level: entryLevel, value: value });
+  function addHistory(entryMode, entryLevel, value, isPerfect) {
+    history.unshift({ mode: entryMode, level: entryLevel, value: value, perfect: !!isPerfect });
     renderHistory();
   }
 
@@ -213,7 +235,9 @@
     histList.innerHTML = "";
     history.forEach(function (h) {
       const item = document.createElement("div");
-      item.className = "hist-item" + (h.value === null ? " fail" : "");
+      item.className = "hist-item"
+        + (h.value === null ? " fail" : "")
+        + (h.perfect ? " perfect" : "");
 
       const key = document.createElement("span");
       key.className = "h-key";
@@ -283,16 +307,19 @@
 
   function updateBestDisplay() {
     const b = bestScores[mode][level];
+    let text;
     if (mode === "area") {
-      bestEl.textContent = b === null
+      text = b === null
         ? level + "단계 최고점수: -"
         : level + "단계 최고점수: " + fmt(b, 1) + "%";
     } else {
       const t = MODES.time.secs[level];
-      bestEl.textContent = b === null
+      text = b === null
         ? t + "초 최고기록: -"
         : t + "초 최고기록: " + fmt(b, 2) + "초";
     }
+    bestEl.textContent = text;
+    histBestEl.textContent = text;
   }
 
   function selectLevel(lv) {
@@ -339,6 +366,7 @@
   }
 
   function start() {
+    stopConfetti();
     state = "growing";
     r = 0;
     startTime = performance.now();
@@ -359,19 +387,22 @@
     if (raf) cancelAnimationFrame(raf);
 
     let isNewBest = false;
+    let perfect = false;
     if (mode === "area") {
       score = computeAreaScore();
+      perfect = fmt(score, 1) === "100"; // 100%
       const old = bestScores.area[level];
       if (old === null || score > old) {
         bestScores.area[level] = score;
         localStorage.setItem("spoton_area_best_" + level, String(score));
         isNewBest = true;
       }
-      hint.textContent = (isNewBest ? "🎉 신기록! " : "")
+      hint.textContent = (perfect ? "🎯 완벽! " : (isNewBest ? "🎉 신기록! " : ""))
         + "점수 " + fmt(score, 1) + "% · 다시 하려면 스페이스바";
     } else {
       score = (performance.now() - startTime) / 1000;
       const t = MODES.time.secs[level];
+      perfect = fmt(score, 2) === String(t); // 목표 시간 정확히
       const old = bestScores.time[level];
       // 목표 시간에 가장 가까운 기록이 최고 기록
       if (old === null || Math.abs(score - t) < Math.abs(old - t)) {
@@ -379,14 +410,18 @@
         localStorage.setItem("spoton_time_best_" + level, String(score));
         isNewBest = true;
       }
-      hint.textContent = (isNewBest ? "🎉 신기록! " : "")
+      hint.textContent = (perfect ? "🎯 완벽! " : (isNewBest ? "🎉 신기록! " : ""))
         + "기록 " + fmt(score, 2) + "초 · 다시 하려면 스페이스바";
     }
 
     updateBestDisplay();
-    addHistory(mode, level, score);
+    addHistory(mode, level, score, perfect);
     showControls(true);
-    draw();
+    if (perfect) {
+      spawnConfetti();
+    } else {
+      draw();
+    }
   }
 
   function gameOver() {
@@ -440,6 +475,65 @@
     ctx.restore();
   }
 
+  // 컨페티 (정확히 맞췄을 때 원에서 팡)
+  let confetti = [];
+  let confettiRaf = null;
+
+  function stopConfetti() {
+    if (confettiRaf) cancelAnimationFrame(confettiRaf);
+    confettiRaf = null;
+    confetti = [];
+  }
+
+  function spawnConfetti() {
+    const colors = ["#ffd24a", "#ff5b5b", "#4affa1", "#4ad2ff", "#ff8be0", "#ffffff"];
+    confetti = [];
+    const n = 70;
+    for (let i = 0; i < n; i++) {
+      const ang = (Math.PI * 2) * (i / n) + (i % 3) * 0.11;
+      const spd = 4 + (i % 7);
+      confetti.push({
+        x: cx, y: cy,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 2,
+        life: 1,
+        color: colors[i % colors.length],
+        size: 4 + (i % 5),
+        rot: i,
+        vr: ((i % 5) - 2) * 0.12,
+      });
+    }
+    if (confettiRaf) cancelAnimationFrame(confettiRaf);
+    confettiLoop();
+  }
+
+  function confettiLoop() {
+    draw();
+    let alive = false;
+    confetti.forEach(function (p) {
+      if (p.life <= 0) return;
+      alive = true;
+      p.vy += 0.25;      // 중력
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.vr;
+      p.life -= 0.012;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      ctx.restore();
+    });
+    if (alive) {
+      confettiRaf = requestAnimationFrame(confettiLoop);
+    } else {
+      stopConfetti();
+      draw();
+    }
+  }
+
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
@@ -491,6 +585,7 @@
   function setMode(m) {
     if (m === mode) return;
     if (raf) cancelAnimationFrame(raf);
+    stopConfetti();
     mode = m;
     tabs.forEach(function (t) {
       t.classList.toggle("selected", t.dataset.mode === m);
