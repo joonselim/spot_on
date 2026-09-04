@@ -246,7 +246,7 @@
 
       if (h.mode === "area") {
         key.textContent = h.level + "단계";
-        val.textContent = h.value === null ? "실패" : fmt(h.value, 1) + "%";
+        val.textContent = h.value === null ? "실패" : fmt(h.value, areaDec(h.level)) + "%";
       } else {
         key.textContent = MODES.time.secs[h.level] + "초";
         val.textContent = h.value === null ? "실패" : fmt(h.value, 2) + "초";
@@ -304,6 +304,7 @@
   let score = 0;      // area: %, time: 초
   let startTime = 0;
   let raf = null;
+  let lastPerfect = false; // 방금 정확히 맞췄는지
 
   function updateBestDisplay() {
     const b = bestScores[mode][level];
@@ -311,7 +312,7 @@
     if (mode === "area") {
       text = b === null
         ? level + "단계 최고점수: -"
-        : level + "단계 최고점수: " + fmt(b, 1) + "%";
+        : level + "단계 최고점수: " + fmt(b, areaDec(level)) + "%";
     } else {
       const t = MODES.time.secs[level];
       text = b === null
@@ -367,6 +368,7 @@
 
   function start() {
     stopConfetti();
+    lastPerfect = false;
     state = "growing";
     r = 0;
     startTime = performance.now();
@@ -390,7 +392,8 @@
     let perfect = false;
     if (mode === "area") {
       score = computeAreaScore();
-      perfect = fmt(score, 1) === "100"; // 100%
+      const dec = areaDec(level);
+      perfect = fmt(score, dec) === "100"; // 100%
       const old = bestScores.area[level];
       if (old === null || score > old) {
         bestScores.area[level] = score;
@@ -398,7 +401,7 @@
         isNewBest = true;
       }
       hint.textContent = (perfect ? "🎯 완벽! " : (isNewBest ? "🎉 신기록! " : ""))
-        + "점수 " + fmt(score, 1) + "% · 다시 하려면 스페이스바";
+        + "점수 " + fmt(score, dec) + "% · 다시 하려면 스페이스바";
     } else {
       score = (performance.now() - startTime) / 1000;
       const t = MODES.time.secs[level];
@@ -414,6 +417,7 @@
         + "기록 " + fmt(score, 2) + "초 · 다시 하려면 스페이스바";
     }
 
+    lastPerfect = perfect;
     updateBestDisplay();
     addHistory(mode, level, score, perfect);
     showControls(true);
@@ -456,8 +460,13 @@
     return Number.isInteger(n) ? String(n) : n.toFixed(decimals);
   }
 
+  // AREA 1단계는 튜토리얼: 소수점 없이 반올림
+  function areaDec(lv) {
+    return lv === 1 ? 0 : 1;
+  }
+
   function valueText(v) {
-    return mode === "area" ? fmt(v, 1) + "%" : fmt(v, 2) + "초";
+    return mode === "area" ? fmt(v, areaDec(level)) + "%" : fmt(v, 2) + "초";
   }
 
   function drawCenterText(text) {
@@ -537,11 +546,11 @@
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
-    // 작은 원 (검정 채워진 원)
+    // 작은 원 (검정 채워진 원) — 정확히 맞추면 초록색
     if (r > 0) {
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = "#000";
+      ctx.fillStyle = (state === "stopped" && lastPerfect) ? "#28c76f" : "#000";
       ctx.fill();
     }
 
