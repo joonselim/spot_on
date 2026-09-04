@@ -21,9 +21,56 @@
     user-select: none;
   }
   #wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+    color: #fff;
+  }
+  #gamecol {
     position: relative;
     text-align: center;
-    color: #fff;
+  }
+  #history {
+    width: 160px;
+    margin-top: 52px;
+    text-align: left;
+  }
+  #history .hist-head {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    opacity: 0.9;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.35);
+    padding-bottom: 6px;
+  }
+  #histlist {
+    max-height: 380px;
+    overflow-y: auto;
+  }
+  #histlist:empty::after {
+    content: "아직 없음";
+    font-size: 12px;
+    opacity: 0.6;
+  }
+  .hist-item {
+    font-size: 13px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.12);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .hist-item.fail {
+    background: rgba(255,91,91,0.25);
+  }
+  .hist-item .h-key {
+    opacity: 0.85;
+  }
+  .hist-item .h-val {
+    font-weight: 700;
   }
   #tabs {
     display: flex;
@@ -127,15 +174,21 @@
 </head>
 <body>
   <div id="wrap">
-    <div id="tabs">
-      <button class="tab selected" data-mode="area">AREA</button>
-      <button class="tab" data-mode="time">TIME</button>
+    <div id="gamecol">
+      <div id="tabs">
+        <button class="tab selected" data-mode="area">AREA</button>
+        <button class="tab" data-mode="time">TIME</button>
+      </div>
+      <canvas id="game" width="520" height="440"></canvas>
+      <div id="title">SPOT ON</div>
+      <div id="hint"></div>
+      <div id="best"></div>
+      <div id="controls"></div>
     </div>
-    <canvas id="game" width="520" height="440"></canvas>
-    <div id="title">SPOT ON</div>
-    <div id="hint"></div>
-    <div id="best"></div>
-    <div id="controls"></div>
+    <div id="history">
+      <div class="hist-head">기록</div>
+      <div id="histlist"></div>
+    </div>
   </div>
 
 <script>
@@ -145,7 +198,40 @@
   const hint = document.getElementById("hint");
   const bestEl = document.getElementById("best");
   const controls = document.getElementById("controls");
+  const histList = document.getElementById("histlist");
   const tabs = Array.from(document.querySelectorAll("button.tab"));
+
+  // 플레이 기록 (최신이 위)
+  const history = [];
+
+  function addHistory(entryMode, entryLevel, value) {
+    history.unshift({ mode: entryMode, level: entryLevel, value: value });
+    renderHistory();
+  }
+
+  function renderHistory() {
+    histList.innerHTML = "";
+    history.forEach(function (h) {
+      const item = document.createElement("div");
+      item.className = "hist-item" + (h.value === null ? " fail" : "");
+
+      const key = document.createElement("span");
+      key.className = "h-key";
+      const val = document.createElement("span");
+      val.className = "h-val";
+
+      if (h.mode === "area") {
+        key.textContent = h.level + "단계";
+        val.textContent = h.value === null ? "실패" : fmt(h.value, 1) + "%";
+      } else {
+        key.textContent = MODES.time.secs[h.level] + "초";
+        val.textContent = h.value === null ? "실패" : fmt(h.value, 2) + "초";
+      }
+      item.appendChild(key);
+      item.appendChild(val);
+      histList.appendChild(item);
+    });
+  }
 
   const W = canvas.width;
   const H = canvas.height;
@@ -298,6 +384,7 @@
     }
 
     updateBestDisplay();
+    addHistory(mode, level, score);
     showControls(true);
     draw();
   }
@@ -307,6 +394,7 @@
     if (raf) cancelAnimationFrame(raf);
     r = maxR;
     hint.textContent = (mode === "time" ? "시간 초과! " : "150% 초과! ") + "다시 하려면 스페이스바";
+    addHistory(mode, level, null);
     showControls(true);
     draw();
   }
